@@ -53,6 +53,27 @@ namespace Whoa.Tests
 			[Order]
 			public List<bool> moreBools;
 			
+			[Order]
+			public string awards;
+			
+			[Order]
+			public int? profits;
+			
+			[Order]
+			public int? losses;
+			
+			[Order]
+			public List<int> somethingElse;
+			
+			[Order]
+			public Dictionary<string, string> staff;
+			
+			[Order]
+			public Dictionary<string, string> plausibleSampleData;
+			
+			[Order]
+			public List<bool> notActuallyMoreBools;
+			
 			public override string ToString()
 			{
 				string ret = $@"{title}
@@ -60,22 +81,25 @@ Artist: {artist}
 RPM: {rpm}
 Price: {price}
 ";
-				ret += inLibrary ? "In" : "Not in";
-				ret += " library" + Environment.NewLine;
-				ret += "Something else about it: ";
-				ret += otherBool ? "Yep" : "Nope";
-				ret += Environment.NewLine;
-				ret += "Songs:";
-				ret += Environment.NewLine;
+				ret += (inLibrary ? "In" : "Not in") + " library" + Environment.NewLine;
+				ret += "Something else about it: " + (otherBool ? "Yep" : "Nope") + Environment.NewLine;
+				ret += "Songs:" + Environment.NewLine;
 				int track = 0;
 				foreach (string song in songs)
 					ret += $"{++track}. {song}" + Environment.NewLine;
-				ret += $"Guid (?!): {guidForSomeReason}";
-				ret += Environment.NewLine;
-				ret += "Some more information:";
-				ret += Environment.NewLine;
+				ret += $"Guid (?!): {guidForSomeReason}" + Environment.NewLine;
+				ret += "Some more information:" + Environment.NewLine;
 				foreach (bool info in moreBools)
 					ret += (info ? "Yes" : "No") + Environment.NewLine;
+				ret += "Awards: " + (awards == null ? "N/A" : awards) + Environment.NewLine;
+				ret += "Profits: " + (profits == null ? "N/A" : profits.ToString()) + Environment.NewLine;
+				ret += "Losses: " + (losses == null ? "N/A" : losses.ToString()) + Environment.NewLine;
+				ret += "Null lists work: " + (somethingElse == null ? "Yes" : "No") + Environment.NewLine;
+				ret += "Staff:" + Environment.NewLine;
+				foreach (var pair in staff)
+					ret += $"{pair.Key} - {pair.Value}" + Environment.NewLine;
+				ret += "Null dictionaries work: " + (plausibleSampleData == null ? "Yes" : "No") + Environment.NewLine;
+				ret += "Null bool lists work: " + (notActuallyMoreBools == null ? "Yes" : "No") + Environment.NewLine;
 				return ret;
 			}
 		}
@@ -97,7 +121,20 @@ Price: {price}
 						"Test Data"
 					}.ToList(),
 					guidForSomeReason = Guid.NewGuid(),
-					moreBools = new bool[] {true, false, false, true, true, true, false, false, true, true}.ToList()
+					moreBools = new bool[] {true, false, false, true, true, true, false, false, true, true}.ToList(),
+					awards = null,
+					profits = 5000,
+					losses = null,
+					somethingElse = null,
+					staff = new Dictionary<string, string>
+					{
+						{"Ethan Klein", "Artist"},
+						{"Post Malone", "Featured Artist"},
+						{"Frank Walker", "Tile Provider"},
+						{"This is some", "test data"}
+					},
+					plausibleSampleData = null,
+					notActuallyMoreBools = null
 				};
 				string expected = rec.ToString();
 				Whoa.SerialiseObject(str, rec);

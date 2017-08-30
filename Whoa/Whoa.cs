@@ -27,7 +27,7 @@ using System.Reflection;
 namespace Whoa
 {
 	public static class Whoa
-	{
+	{		
 		private class SpecialSerialiserAttribute: Attribute
 		{
 			public Type t { get; private set; }
@@ -60,6 +60,43 @@ namespace Whoa
 			return new Guid(guid);
 		}
 		
+		[SpecialSerialiser(typeof(string))]
+		private static void SerialiseString(Stream fobj, dynamic obj)
+		{
+			using (var write = new BinaryWriter(fobj, Encoding.UTF8, true))
+			{
+				byte[] bytes = null;
+				int len;
+				if (obj == null)
+					len = -1;
+				else
+				{
+					bytes = Encoding.UTF8.GetBytes(obj);
+					len = bytes.Length;
+				}
+				typeof(BinaryWriter).GetMethod("Write7BitEncodedInt", BindingFlags.Instance | BindingFlags.NonPublic).Invoke(write, new object[] { len });
+				if (bytes != null)
+					fobj.Write(bytes, 0, len);
+			}
+		}
+		
+		[SpecialDeserialiser(typeof(string))]
+		private static object DeserialiseString(Stream fobj)
+		{
+			using (var read = new BinaryReader(fobj, Encoding.UTF8, true))
+			{
+				int len = (int)typeof(BinaryReader).GetMethod("Read7BitEncodedInt", BindingFlags.Instance | BindingFlags.NonPublic).Invoke(read, new object[] { });
+				if (len < 0)
+					return null;
+				else
+				{
+					var bytes = new byte[len];
+					fobj.Read(bytes, 0, len);
+					return Encoding.UTF8.GetString(bytes);
+				}
+			}
+		}
+		
 		private static IOrderedEnumerable<MemberInfo> Members(Type t)
 		{
 			return t.GetProperties().Select(m => m as MemberInfo).Concat(t.GetFields().Select(m => m as MemberInfo)).Where(m => (m.GetCustomAttributes(typeof(OrderAttribute), false).SingleOrDefault() as OrderAttribute) != null).OrderBy(m => (m.GetCustomAttributes(typeof(OrderAttribute), false).SingleOrDefault() as OrderAttribute).Order);
@@ -67,6 +104,8 @@ namespace Whoa
 		
 		private static List<bool> ReadBitfield(Stream fobj, int count)
 		{
+			if (count < 0)
+				return null;
 			sbyte bit = 7;
 			int cur = 0;
 			var bitfields = new byte[count / 8 + 1];
@@ -87,6 +126,8 @@ namespace Whoa
 		
 		private static void WriteBitfield(Stream fobj, IEnumerable<bool> bools)
 		{
+			if (bools == null)
+				return;
 			sbyte bit = 7;
 			int cur = 0;
 			var bitfields = new byte[bools.Count() / 8 + 1];
@@ -117,9 +158,17 @@ namespace Whoa
 				{
 					var gent = t.GetGenericTypeDefinition();
 					
+					if (gent == typeof(Nullable<>))
+					{
+						bool extant = read.ReadBoolean();
+						return extant ? DeserialiseObject(t.GetGenericArguments()[0], fobj) : null;
+					}
+					
 					if (gent == typeof(List<>))
 					{
 						int numelems = read.ReadInt32();
+						if (numelems < 0)
+							return null;
 						dynamic retl = Activator.CreateInstance(t, new object[] { numelems });
 						Type elemtype = t.GetGenericArguments()[0];
 						for (int i = 0; i < numelems; i++)
@@ -130,6 +179,8 @@ namespace Whoa
 					if (gent == typeof(Dictionary<,>))
 					{
 						int numpairs = read.ReadInt32();
+						if (numpairs < 0)
+							return null;
 						dynamic retd = Activator.CreateInstance(t, new object[] { numpairs });
 						Type[] arguments = t.GetGenericArguments();
 						for (int i = 0; i < numpairs; i++)
@@ -158,8 +209,10 @@ namespace Whoa
 				if (readermethod != null)
 					return readermethod.Invoke(read, new object[] { });
 				
-				object ret = t.GetConstructor(Type.EmptyTypes).Invoke(new object[] { });
 				int nummembers = read.ReadInt32();
+				if (nummembers < 0)
+					return null;
+				object ret = t.GetConstructor(Type.EmptyTypes).Invoke(new object[] { });
 				var bools = new List<dynamic>();
 				
 				foreach (dynamic member in Members(t).Take(nummembers))
@@ -190,21 +243,28 @@ namespace Whoa
 			}
 		}
 		
-		public static void SerialiseObject(Stream fobj, dynamic obj)
+		public static void SerialiseObject(Stream fobj, dynamic obj, Type t)
 		{
 			using (var write = new BinaryWriter(fobj, Encoding.UTF8, true))
 			{
-				Type t = obj.GetType();
-				
 				if (t.IsGenericType)
 				{
 					var gent = t.GetGenericTypeDefinition();
+					
+					if (gent == typeof(Nullable<>))
+					{
+						bool extant = obj != null;
+						write.Write(extant);
+						if (extant)
+							SerialiseObject(fobj, obj, t.GetGenericArguments()[0]);
+						return;
+					}
 					
 					if (gent == typeof(List<>))
 					{
 						if (obj == null)
 						{
-							write.Write(0);
+							write.Write(-1);
 							return;
 						}
 						write.Write(obj.Count);
@@ -217,7 +277,7 @@ namespace Whoa
 					{
 						if (obj == null)
 						{
-							write.Write(0);
+							write.Write(-1);
 							return;
 						}
 						write.Write(obj.Count);
@@ -255,7 +315,7 @@ namespace Whoa
 				
 				if (obj == null)
 				{
-					write.Write(0);
+					write.Write(-1);
 					return;
 				}
 				
@@ -273,11 +333,11 @@ namespace Whoa
 					
 					if (memt == typeof(bool))
 						bools.Add(member.GetValue(obj));
-					else if (typeof(IEnumerable<bool>).IsAssignableFrom(memt))
+					else if (memt == typeof(List<bool>) || memt == typeof(bool[]))
 					{
 						var val = member.GetValue(obj) as IEnumerable<bool>;
 						if (val == null)
-							write.Write(0);
+							write.Write(-1);
 						else
 						{
 							write.Write(val.Count());
@@ -285,12 +345,21 @@ namespace Whoa
 						}
 					}
 					else
-						SerialiseObject(fobj, member.GetValue(obj));
+					{
+						dynamic val = member.GetValue(obj);
+						SerialiseObject(fobj, val, memt);
+					}
+					
 				}
 				
 				WriteBitfield(fobj, bools);
 				
 			}
+		}
+		
+		public static void SerialiseObject(Stream fobj, dynamic obj)
+		{
+			SerialiseObject(fobj, obj, obj.GetType());
 		}
 	}
 }
