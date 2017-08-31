@@ -108,7 +108,7 @@ namespace Whoa
 				return null;
 			sbyte bit = 7;
 			int cur = 0;
-			var bitfields = new byte[count / 8 + 1];
+			var bitfields = new byte[count / 8 + (count % 8 == 0 ? 0 : 1)];
 			var bools = new List<bool>(count);
 			fobj.Read(bitfields, 0, bitfields.Length);
 			for (int i = 0; i < count; i++)
@@ -130,7 +130,8 @@ namespace Whoa
 				return;
 			sbyte bit = 7;
 			int cur = 0;
-			var bitfields = new byte[bools.Count() / 8 + 1];
+			int count = bools.Count();
+			var bitfields = new byte[count / 8 + (count % 8 == 0 ? 0 : 1)];
 			foreach (bool mybool in bools)
 			{
 				if (mybool)

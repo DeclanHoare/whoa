@@ -74,6 +74,24 @@ namespace Whoa.Tests
 			[Order]
 			public List<bool> notActuallyMoreBools;
 			
+			[Order]
+			public bool boolThree;
+			
+			[Order]
+			public bool boolFour;
+			
+			[Order]
+			public bool boolFive;
+			
+			[Order]
+			public bool boolSix;
+			
+			[Order]
+			public bool boolSeven;
+			
+			[Order]
+			public bool boolEight;
+			
 			public override string ToString()
 			{
 				string ret = $@"{title}
@@ -100,6 +118,13 @@ Price: {price}
 					ret += $"{pair.Key} - {pair.Value}" + Environment.NewLine;
 				ret += "Null dictionaries work: " + (plausibleSampleData == null ? "Yes" : "No") + Environment.NewLine;
 				ret += "Null bool lists work: " + (notActuallyMoreBools == null ? "Yes" : "No") + Environment.NewLine;
+				ret += $@"boolThree = {boolThree}
+boolFour = {boolFour}
+boolFive = {boolFive}
+boolSix = {boolSix}
+boolSeven = {boolSeven}
+boolEight = {boolEight}
+";
 				return ret;
 			}
 		}
@@ -134,7 +159,13 @@ Price: {price}
 						{"This is some", "test data"}
 					},
 					plausibleSampleData = null,
-					notActuallyMoreBools = null
+					notActuallyMoreBools = null,
+					boolThree = false,
+					boolFour = true,
+					boolFive = false,
+					boolSix = true,
+					boolSeven = false,
+					boolEight = true
 				};
 				string expected = rec.ToString();
 				Whoa.SerialiseObject(str, rec);
