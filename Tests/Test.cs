@@ -18,6 +18,7 @@ using System;
 using System.IO;
 using System.Collections.Generic;
 using System.Linq;
+using System.Numerics;
 using Whoa;
 
 namespace Whoa.Tests
@@ -92,6 +93,9 @@ namespace Whoa.Tests
 			[Order]
 			public bool boolEight;
 			
+			[Order]
+			public BigInteger reallyReallyReallyReallyReallyReallyBigNumber;
+			
 			public override string ToString()
 			{
 				string ret = $@"{title}
@@ -124,6 +128,7 @@ boolFive = {boolFive}
 boolSix = {boolSix}
 boolSeven = {boolSeven}
 boolEight = {boolEight}
+A number that is so shockingly large that you won't believe how large it is, even though it doesn't mean anything: {reallyReallyReallyReallyReallyReallyBigNumber}
 ";
 				return ret;
 			}
@@ -165,7 +170,8 @@ boolEight = {boolEight}
 					boolFive = false,
 					boolSix = true,
 					boolSeven = false,
-					boolEight = true
+					boolEight = true,
+					reallyReallyReallyReallyReallyReallyBigNumber = BigInteger.Parse("41290871590318501381209471092481204")
 				};
 				string expected = rec.ToString();
 				Whoa.SerialiseObject(str, rec);

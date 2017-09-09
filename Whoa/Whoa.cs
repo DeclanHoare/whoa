@@ -23,6 +23,7 @@ using System.Threading.Tasks;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Reflection;
+using System.Numerics;
 
 namespace Whoa
 {
@@ -58,6 +59,18 @@ namespace Whoa
 			var guid = new byte[16];
 			fobj.Read(guid, 0, 16);
 			return new Guid(guid);
+		}
+		
+		[SpecialSerialiser(typeof(BigInteger))]
+		private static void SerialiseBigInt(Stream fobj, dynamic obj)
+		{
+			SerialiseObject(fobj, new List<byte>(obj.ToByteArray()));
+		}
+		
+		[SpecialDeserialiser(typeof(BigInteger))]
+		private static object DeserialiseBigInt(Stream fobj)
+		{
+			return new BigInteger((DeserialiseObject(typeof(List<byte>), fobj) as List<byte>).ToArray());
 		}
 		
 		[SpecialSerialiser(typeof(string))]
