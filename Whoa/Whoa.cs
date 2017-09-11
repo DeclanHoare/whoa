@@ -110,6 +110,20 @@ namespace Whoa
 			}
 		}
 		
+		[SpecialSerialiser(typeof(DateTime))]
+		private static void SerialiseDateTime(Stream fobj, dynamic obj)
+		{
+			using (var write = new BinaryWriter(fobj, Encoding.UTF8, true))
+				write.Write(obj.ToBinary());
+		}
+		
+		[SpecialDeserialiser(typeof(DateTime))]
+		private static object DeserialiseDateTime(Stream fobj)
+		{
+			using (var read = new BinaryReader(fobj, Encoding.UTF8, true))
+				return DateTime.FromBinary(read.ReadInt64());
+		}
+		
 		private static IOrderedEnumerable<MemberInfo> Members(Type t)
 		{
 			return t.GetProperties().Select(m => m as MemberInfo).Concat(t.GetFields().Select(m => m as MemberInfo)).Where(m => (m.GetCustomAttributes(typeof(OrderAttribute), false).SingleOrDefault() as OrderAttribute) != null).OrderBy(m => (m.GetCustomAttributes(typeof(OrderAttribute), false).SingleOrDefault() as OrderAttribute).Order);

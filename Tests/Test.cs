@@ -96,12 +96,16 @@ namespace Whoa.Tests
 			[Order]
 			public BigInteger reallyReallyReallyReallyReallyReallyBigNumber;
 			
+			[Order]
+			public DateTime releaseDate;
+			
 			public override string ToString()
 			{
 				string ret = $@"{title}
 Artist: {artist}
 RPM: {rpm}
 Price: {price}
+Released: {releaseDate}
 ";
 				ret += (inLibrary ? "In" : "Not in") + " library" + Environment.NewLine;
 				ret += "Something else about it: " + (otherBool ? "Yep" : "Nope") + Environment.NewLine;
@@ -171,7 +175,8 @@ A number that is so shockingly large that you won't believe how large it is, eve
 					boolSix = true,
 					boolSeven = false,
 					boolEight = true,
-					reallyReallyReallyReallyReallyReallyBigNumber = BigInteger.Parse("41290871590318501381209471092481204")
+					reallyReallyReallyReallyReallyReallyBigNumber = BigInteger.Parse("41290871590318501381209471092481204"),
+					releaseDate = new DateTime(2015, 04, 20)
 				};
 				string expected = rec.ToString();
 				Whoa.SerialiseObject(str, rec);
