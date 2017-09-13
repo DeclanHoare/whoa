@@ -25,6 +25,12 @@ namespace Whoa.Tests
 {
 	public static class Test
 	{
+		private enum RecordType
+		{
+			Single,
+			EP,
+			LP
+		}
 		private class Record
 		{
 			[Order]
@@ -99,6 +105,9 @@ namespace Whoa.Tests
 			[Order]
 			public DateTime releaseDate;
 			
+			[Order]
+			public RecordType kind;
+			
 			public override string ToString()
 			{
 				string ret = $@"{title}
@@ -133,6 +142,7 @@ boolSix = {boolSix}
 boolSeven = {boolSeven}
 boolEight = {boolEight}
 A number that is so shockingly large that you won't believe how large it is, even though it doesn't mean anything: {reallyReallyReallyReallyReallyReallyBigNumber}
+This album is a: {kind}.
 ";
 				return ret;
 			}
@@ -176,7 +186,8 @@ A number that is so shockingly large that you won't believe how large it is, eve
 					boolSeven = false,
 					boolEight = true,
 					reallyReallyReallyReallyReallyReallyBigNumber = BigInteger.Parse("41290871590318501381209471092481204"),
-					releaseDate = new DateTime(2015, 04, 20)
+					releaseDate = new DateTime(2015, 04, 20),
+					kind = RecordType.Single
 				};
 				string expected = rec.ToString();
 				Whoa.SerialiseObject(str, rec);

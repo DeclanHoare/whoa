@@ -178,10 +178,18 @@ namespace Whoa
 			return (T)DeserialiseObject(typeof(T), fobj);
 		}
 		
-		public static object DeserialiseObject(Type t, Stream fobj)
+		private static object DeserialiseObjectWorker(Type t, Stream fobj)
 		{
+#if DEBUG
+			Console.WriteLine("Deserialising object of type: " + t.ToString());
+#endif
 			using (var read = new BinaryReader(fobj, Encoding.UTF8, true))
 			{
+				if (t.IsEnum)
+				{
+					return DeserialiseObjectWorker(Enum.GetUnderlyingType(t), fobj);
+				}
+				
 				if (t.IsGenericType)
 				{
 					var gent = t.GetGenericTypeDefinition();
@@ -189,7 +197,7 @@ namespace Whoa
 					if (gent == typeof(Nullable<>))
 					{
 						bool extant = read.ReadBoolean();
-						return extant ? DeserialiseObject(t.GetGenericArguments()[0], fobj) : null;
+						return extant ? DeserialiseObjectWorker(t.GetGenericArguments()[0], fobj) : null;
 					}
 					
 					if (gent == typeof(List<>))
@@ -200,7 +208,7 @@ namespace Whoa
 						dynamic retl = Activator.CreateInstance(t, new object[] { numelems });
 						Type elemtype = t.GetGenericArguments()[0];
 						for (int i = 0; i < numelems; i++)
-							retl.Add((dynamic)DeserialiseObject(elemtype, fobj));
+							retl.Add((dynamic)DeserialiseObjectWorker(elemtype, fobj));
 						return retl;
 					}
 					
@@ -213,8 +221,8 @@ namespace Whoa
 						Type[] arguments = t.GetGenericArguments();
 						for (int i = 0; i < numpairs; i++)
 						{
-							dynamic key = DeserialiseObject(arguments[0], fobj);
-							dynamic val = DeserialiseObject(arguments[1], fobj);
+							dynamic key = DeserialiseObjectWorker(arguments[0], fobj);
+							dynamic val = DeserialiseObjectWorker(arguments[1], fobj);
 							retd.Add(key, val);
 						}
 						return retd;
@@ -258,7 +266,7 @@ namespace Whoa
 					else if (memt == typeof(bool[]))
 						member.SetValue(ret, ReadBitfield(fobj, read.ReadInt32()).ToArray());
 					else
-						member.SetValue(ret, DeserialiseObject(memt, fobj));
+						member.SetValue(ret, DeserialiseObjectWorker(memt, fobj));
 				}
 				
 				if (bools.Count > 0)
@@ -271,8 +279,16 @@ namespace Whoa
 			}
 		}
 		
-		public static void SerialiseObject(Stream fobj, dynamic obj, Type t)
+		public static void SerialiseObject(Stream fobj, dynamic obj)
 		{
+			SerialiseObject(fobj, obj, obj.GetType());
+		}
+		
+		private static void SerialiseObjectWorker(Stream fobj, dynamic obj, Type t)
+		{
+#if DEBUG
+			Console.WriteLine("Serialising object of type: " + t.ToString());
+#endif
 			using (var write = new BinaryWriter(fobj, Encoding.UTF8, true))
 			{
 				if (t.IsGenericType)
@@ -284,7 +300,7 @@ namespace Whoa
 						bool extant = obj != null;
 						write.Write(extant);
 						if (extant)
-							SerialiseObject(fobj, obj, t.GetGenericArguments()[0]);
+							SerialiseObjectWorker(fobj, obj, t.GetGenericArguments()[0]);
 						return;
 					}
 					
@@ -297,7 +313,7 @@ namespace Whoa
 						}
 						write.Write(obj.Count);
 						foreach (dynamic item in obj)
-							SerialiseObject(fobj, item);
+							SerialiseObjectWorker(fobj, item, item.GetType());
 						return;
 					}
 					
@@ -311,8 +327,8 @@ namespace Whoa
 						write.Write(obj.Count);
 						foreach (dynamic pair in obj)
 						{
-							SerialiseObject(fobj, pair.Key);
-							SerialiseObject(fobj, pair.Value);
+							SerialiseObjectWorker(fobj, pair.Key, pair.Key.GetType());
+							SerialiseObjectWorker(fobj, pair.Value, pair.Value.GetType());
 						}
 						return;
 					}
@@ -375,7 +391,7 @@ namespace Whoa
 					else
 					{
 						dynamic val = member.GetValue(obj);
-						SerialiseObject(fobj, val, memt);
+						SerialiseObjectWorker(fobj, val, memt);
 					}
 					
 				}
@@ -385,9 +401,31 @@ namespace Whoa
 			}
 		}
 		
-		public static void SerialiseObject(Stream fobj, dynamic obj)
+		public static void SerialiseObject(Stream fobj, dynamic obj, Type t)
 		{
-			SerialiseObject(fobj, obj, obj.GetType());
+			try
+			{
+				SerialiseObjectWorker(fobj, obj, t);
+			}
+			catch (Exception ex)
+			{
+				ex.Data.Add("Whoa: Type", t);
+				ex.Data.Add("Whoa: Object", obj);
+				throw ex;
+			}
+		}
+		
+		public static object DeserialiseObject(Type t, Stream fobj)
+		{
+			try
+			{
+				return DeserialiseObjectWorker(t, fobj);
+			}
+			catch (Exception ex)
+			{
+				ex.Data.Add("Whoa: Type", t);
+				throw ex;
+			}
 		}
 	}
 }
