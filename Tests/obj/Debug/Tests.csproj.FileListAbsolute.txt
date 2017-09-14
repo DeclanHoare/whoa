@@ -1,8 +1,0 @@
-C:\Users\Michael\Documents\whoa\Tests\bin\Debug\Tests.exe.config
-C:\Users\Michael\Documents\whoa\Tests\bin\Debug\Tests.exe
-C:\Users\Michael\Documents\whoa\Tests\bin\Debug\Tests.pdb
-C:\Users\Michael\Documents\whoa\Tests\bin\Debug\Whoa.dll
-C:\Users\Michael\Documents\whoa\Tests\bin\Debug\Whoa.pdb
-C:\Users\Michael\Documents\whoa\Tests\obj\Debug\Tests.csprojResolveAssemblyReference.cache
-C:\Users\Michael\Documents\whoa\Tests\obj\Debug\Tests.exe
-C:\Users\Michael\Documents\whoa\Tests\obj\Debug\Tests.pdb
