@@ -187,7 +187,7 @@ namespace Whoa
 			{
 				if (t.IsEnum)
 				{
-					return DeserialiseObjectWorker(Enum.GetUnderlyingType(t), fobj);
+					return Enum.ToObject(t, DeserialiseObjectWorker(Enum.GetUnderlyingType(t), fobj));
 				}
 				
 				if (t.IsGenericType)
@@ -291,6 +291,13 @@ namespace Whoa
 #endif
 			using (var write = new BinaryWriter(fobj, Encoding.UTF8, true))
 			{
+				if (t.IsEnum)
+				{
+					Type realt = Enum.GetUnderlyingType(t);
+					SerialiseObjectWorker(fobj, Convert.ChangeType(obj, realt), realt);
+					return;
+				}
+				
 				if (t.IsGenericType)
 				{
 					var gent = t.GetGenericTypeDefinition();

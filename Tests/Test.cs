@@ -31,6 +31,15 @@ namespace Whoa.Tests
 			EP,
 			LP
 		}
+		
+		[Flags]
+		private enum Details
+		{
+			Catchy = 1,
+			Popular = 2,
+			Terrible = 4
+		}
+		
 		private class Record
 		{
 			[Order]
@@ -108,6 +117,9 @@ namespace Whoa.Tests
 			[Order]
 			public RecordType kind;
 			
+			[Order]
+			public Details details;
+			
 			public override string ToString()
 			{
 				string ret = $@"{title}
@@ -142,7 +154,10 @@ boolSix = {boolSix}
 boolSeven = {boolSeven}
 boolEight = {boolEight}
 A number that is so shockingly large that you won't believe how large it is, even though it doesn't mean anything: {reallyReallyReallyReallyReallyReallyBigNumber}
-This album is a: {kind}.
+Category: {kind}.
+Is catchy: {details.HasFlag(Details.Catchy)}.
+Is popular: {details.HasFlag(Details.Popular)}.
+Is terrible: {details.HasFlag(Details.Terrible)}.
 ";
 				return ret;
 			}
@@ -162,7 +177,9 @@ This album is a: {kind}.
 					songs = new string[]
 					{
 						"International Tiles",
-						"Test Data"
+						"Test Data",
+						"Bonus Track",
+						"Casin"
 					}.ToList(),
 					guidForSomeReason = Guid.NewGuid(),
 					moreBools = new bool[] {true, false, false, true, true, true, false, false, true, true}.ToList(),
@@ -187,7 +204,8 @@ This album is a: {kind}.
 					boolEight = true,
 					reallyReallyReallyReallyReallyReallyBigNumber = BigInteger.Parse("41290871590318501381209471092481204"),
 					releaseDate = new DateTime(2015, 04, 20),
-					kind = RecordType.Single
+					kind = RecordType.EP,
+					details = Details.Catchy | Details.Popular
 				};
 				string expected = rec.ToString();
 				Whoa.SerialiseObject(str, rec);
