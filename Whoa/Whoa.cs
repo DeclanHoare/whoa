@@ -27,157 +27,163 @@ using System.Numerics;
 
 namespace Whoa
 {
-	public static class Whoa
-	{		
-		private class SpecialSerialiserAttribute: Attribute
-		{
-			public Type t { get; private set; }
-			public SpecialSerialiserAttribute(Type in_t)
-			{
-				t = in_t;
-			}
-		}
-		
-		private class SpecialDeserialiserAttribute: Attribute
-		{
-			public Type t { get; private set; }
-			public SpecialDeserialiserAttribute(Type in_t)
-			{
-				t = in_t;
-			}
-		}
-		
-		[SpecialSerialiser(typeof(Guid))]
-		private static void SerialiseGuid(Stream fobj, dynamic obj)
-		{
-			fobj.Write(obj.ToByteArray(), 0, 16);
-		}
-		
-		[SpecialDeserialiser(typeof(Guid))]
-		private static object DeserialiseGuid(Stream fobj)
-		{
-			var guid = new byte[16];
-			fobj.Read(guid, 0, 16);
-			return new Guid(guid);
-		}
-		
-		[SpecialSerialiser(typeof(BigInteger))]
-		private static void SerialiseBigInt(Stream fobj, dynamic obj)
-		{
-			SerialiseObject(fobj, new List<byte>(obj.ToByteArray()));
-		}
-		
-		[SpecialDeserialiser(typeof(BigInteger))]
-		private static object DeserialiseBigInt(Stream fobj)
-		{
-			return new BigInteger((DeserialiseObject(typeof(List<byte>), fobj) as List<byte>).ToArray());
-		}
-		
-		[SpecialSerialiser(typeof(string))]
-		private static void SerialiseString(Stream fobj, dynamic obj)
-		{
-			using (var write = new BinaryWriter(fobj, Encoding.UTF8, true))
-			{
-				byte[] bytes = null;
-				int len;
-				if (obj == null)
-					len = -1;
-				else
-				{
-					bytes = Encoding.UTF8.GetBytes(obj);
-					len = bytes.Length;
-				}
-				typeof(BinaryWriter).GetMethod("Write7BitEncodedInt", BindingFlags.Instance | BindingFlags.NonPublic).Invoke(write, new object[] { len });
-				if (bytes != null)
-					fobj.Write(bytes, 0, len);
-			}
-		}
-		
-		[SpecialDeserialiser(typeof(string))]
-		private static object DeserialiseString(Stream fobj)
-		{
-			using (var read = new BinaryReader(fobj, Encoding.UTF8, true))
-			{
-				int len = (int)typeof(BinaryReader).GetMethod("Read7BitEncodedInt", BindingFlags.Instance | BindingFlags.NonPublic).Invoke(read, new object[] { });
-				if (len < 0)
-					return null;
-				else
-				{
-					var bytes = new byte[len];
-					fobj.Read(bytes, 0, len);
-					return Encoding.UTF8.GetString(bytes);
-				}
-			}
-		}
-		
-		[SpecialSerialiser(typeof(DateTime))]
-		private static void SerialiseDateTime(Stream fobj, dynamic obj)
-		{
-			using (var write = new BinaryWriter(fobj, Encoding.UTF8, true))
-				write.Write(obj.ToBinary());
-		}
-		
-		[SpecialDeserialiser(typeof(DateTime))]
-		private static object DeserialiseDateTime(Stream fobj)
-		{
-			using (var read = new BinaryReader(fobj, Encoding.UTF8, true))
-				return DateTime.FromBinary(read.ReadInt64());
-		}
-		
-		private static IOrderedEnumerable<MemberInfo> Members(Type t)
-		{
-			return t.GetProperties().Select(m => m as MemberInfo).Concat(t.GetFields().Select(m => m as MemberInfo)).Where(m => (m.GetCustomAttributes(typeof(OrderAttribute), false).SingleOrDefault() as OrderAttribute) != null).OrderBy(m => (m.GetCustomAttributes(typeof(OrderAttribute), false).SingleOrDefault() as OrderAttribute).Order);
-		}
-		
-		private static List<bool> ReadBitfield(Stream fobj, int count)
-		{
-			if (count < 0)
-				return null;
-			sbyte bit = 7;
-			int cur = 0;
-			var bitfields = new byte[count / 8 + (count % 8 == 0 ? 0 : 1)];
-			var bools = new List<bool>(count);
-			fobj.Read(bitfields, 0, bitfields.Length);
-			for (int i = 0; i < count; i++)
-			{
-				bools.Add(((bitfields[cur] >> bit) & 1) == 1);
-				bit--;
-				if (bit < 0)
-				{
-					bit = 7;
-					cur++;
-				}
-			}
-			return bools;
-		}
-		
-		private static void WriteBitfield(Stream fobj, IEnumerable<bool> bools)
-		{
-			if (bools == null)
-				return;
-			sbyte bit = 7;
-			int cur = 0;
-			int count = bools.Count();
-			var bitfields = new byte[count / 8 + (count % 8 == 0 ? 0 : 1)];
-			foreach (bool mybool in bools)
-			{
-				if (mybool)
-					bitfields[cur] |= (byte) (1 << bit);
-				bit--;
-				if (bit < 0)
-				{
-					bit = 7;
-					cur++;
-				}
-			}
-			fobj.Write(bitfields, 0, bitfields.Length);
-		}
-		
-		public static T DeserialiseObject<T>(Stream fobj)
-		{
-			return (T)DeserialiseObject(typeof(T), fobj);
-		}
-		
+    public static class Whoa
+    {
+        private class SpecialSerialiserAttribute : Attribute
+        {
+            public Type t { get; private set; }
+            public SpecialSerialiserAttribute(Type in_t)
+            {
+                t = in_t;
+            }
+        }
+
+        private class SpecialDeserialiserAttribute : Attribute
+        {
+            public Type t { get; private set; }
+            public SpecialDeserialiserAttribute(Type in_t)
+            {
+                t = in_t;
+            }
+        }
+
+        [SpecialSerialiser(typeof(Guid))]
+        private static void SerialiseGuid(Stream fobj, dynamic obj)
+        {
+            fobj.Write(obj.ToByteArray(), 0, 16);
+        }
+
+        [SpecialDeserialiser(typeof(Guid))]
+        private static object DeserialiseGuid(Stream fobj)
+        {
+            var guid = new byte[16];
+            fobj.Read(guid, 0, 16);
+            return new Guid(guid);
+        }
+
+        [SpecialSerialiser(typeof(BigInteger))]
+        private static void SerialiseBigInt(Stream fobj, dynamic obj)
+        {
+            SerialiseObject(fobj, new List<byte>(obj.ToByteArray()));
+        }
+
+        [SpecialDeserialiser(typeof(BigInteger))]
+        private static object DeserialiseBigInt(Stream fobj)
+        {
+            return new BigInteger((DeserialiseObject(typeof(List<byte>), fobj) as List<byte>).ToArray());
+        }
+
+        [SpecialSerialiser(typeof(string))]
+        private static void SerialiseString(Stream fobj, dynamic obj)
+        {
+            using (var write = new BinaryWriter(fobj, Encoding.UTF8, true))
+            {
+                byte[] bytes = null;
+                int len;
+                if (obj == null)
+                    len = -1;
+                else
+                {
+                    bytes = Encoding.UTF8.GetBytes(obj);
+                    len = bytes.Length;
+                }
+                typeof(BinaryWriter).GetMethod("Write7BitEncodedInt", BindingFlags.Instance | BindingFlags.NonPublic).Invoke(write, new object[] { len });
+                if (bytes != null)
+                    fobj.Write(bytes, 0, len);
+            }
+        }
+
+        [SpecialDeserialiser(typeof(string))]
+        private static object DeserialiseString(Stream fobj)
+        {
+            using (var read = new BinaryReader(fobj, Encoding.UTF8, true))
+            {
+                int len = (int)typeof(BinaryReader).GetMethod("Read7BitEncodedInt", BindingFlags.Instance | BindingFlags.NonPublic).Invoke(read, new object[] { });
+                if (len < 0)
+                    return null;
+                else
+                {
+                    var bytes = new byte[len];
+                    fobj.Read(bytes, 0, len);
+                    return Encoding.UTF8.GetString(bytes);
+                }
+            }
+        }
+
+        [SpecialSerialiser(typeof(DateTime))]
+        private static void SerialiseDateTime(Stream fobj, dynamic obj)
+        {
+            using (var write = new BinaryWriter(fobj, Encoding.UTF8, true))
+                write.Write(obj.ToBinary());
+        }
+
+        [SpecialDeserialiser(typeof(DateTime))]
+        private static object DeserialiseDateTime(Stream fobj)
+        {
+            using (var read = new BinaryReader(fobj, Encoding.UTF8, true))
+                return DateTime.FromBinary(read.ReadInt64());
+        }
+
+        private static IOrderedEnumerable<MemberInfo> Members(Type t)
+        {
+            return t.GetProperties().Select(m => m as MemberInfo).Concat(t.GetFields().Select(m => m as MemberInfo)).Where(m => (m.GetCustomAttributes(typeof(OrderAttribute), false).SingleOrDefault() as OrderAttribute) != null).OrderBy(m => (m.GetCustomAttributes(typeof(OrderAttribute), false).SingleOrDefault() as OrderAttribute).Order);
+        }
+
+        private static List<bool> ReadBitfield(Stream fobj, int count)
+        {
+            if (count < 0)
+                return null;
+            sbyte bit = 7;
+            int cur = 0;
+            var bitfields = new byte[count / 8 + (count % 8 == 0 ? 0 : 1)];
+            var bools = new List<bool>(count);
+            fobj.Read(bitfields, 0, bitfields.Length);
+            for (int i = 0; i < count; i++)
+            {
+                bools.Add(((bitfields[cur] >> bit) & 1) == 1);
+                bit--;
+                if (bit < 0)
+                {
+                    bit = 7;
+                    cur++;
+                }
+            }
+            return bools;
+        }
+
+        private static void WriteBitfield(Stream fobj, IEnumerable<bool> bools)
+        {
+            if (bools == null)
+                return;
+            sbyte bit = 7;
+            int cur = 0;
+            int count = bools.Count();
+            var bitfields = new byte[count / 8 + (count % 8 == 0 ? 0 : 1)];
+            foreach (bool mybool in bools)
+            {
+                if (mybool)
+                    bitfields[cur] |= (byte)(1 << bit);
+                bit--;
+                if (bit < 0)
+                {
+                    bit = 7;
+                    cur++;
+                }
+            }
+            fobj.Write(bitfields, 0, bitfields.Length);
+        }
+
+        public static T DeserialiseObject<T>(Stream fobj)
+        {
+            return (T)DeserialiseObject(typeof(T), fobj);
+        }
+
+        private static dynamic DeserialiseEnum(Type t, BinaryReader fobj)
+        {
+            int value = fobj.ReadInt32();
+            return Enum.Parse(t, value.ToString());
+        }
+
 		private static object DeserialiseObjectWorker(Type t, Stream fobj)
 		{
 #if DEBUG
@@ -187,7 +193,7 @@ namespace Whoa
 			{
 				if (t.IsEnum)
 				{
-					return DeserialiseObjectWorker(Enum.GetUnderlyingType(t), fobj);
+					return DeserialiseEnum(t, read);
 				}
 				
 				if (t.IsGenericType)
@@ -347,7 +353,14 @@ namespace Whoa
 					specialmethod.Invoke(null, new object[] { fobj, obj });
 					return;
 				}
-				
+
+                if (t.IsEnum)
+                {
+                    int value = Convert.ToInt32(obj);
+                    write.Write(value);
+                    return;
+                }
+
 				try
 				{
 					write.Write(obj); // Will fail if not an integral type
@@ -410,7 +423,8 @@ namespace Whoa
 			catch (Exception ex)
 			{
 				ex.Data.Add("Whoa: Type", t);
-				ex.Data.Add("Whoa: Object", obj);
+                
+				//ex.Data.Add("Whoa: Object", obj);
 				throw ex;
 			}
 		}
