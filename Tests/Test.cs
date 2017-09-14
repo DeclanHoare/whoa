@@ -187,7 +187,7 @@ This album is a: {kind}.
 					boolEight = true,
 					reallyReallyReallyReallyReallyReallyBigNumber = BigInteger.Parse("41290871590318501381209471092481204"),
 					releaseDate = new DateTime(2015, 04, 20),
-					kind = RecordType.Single
+					kind = RecordType.EP
 				};
 				string expected = rec.ToString();
 				Whoa.SerialiseObject(str, rec);
@@ -207,7 +207,8 @@ This album is a: {kind}.
 					Console.WriteLine("passed");
 					Console.ResetColor();
 					Console.Write(actual);
-					Environment.Exit(0);
+                    Console.ReadKey(true); //Us Visual Studio users don't get to press a key before the app closes. This must be added directly in the code.
+                    Environment.Exit(0);
 				}
 				else
 				{
@@ -219,6 +220,7 @@ This album is a: {kind}.
 					Console.WriteLine("");
 					Console.WriteLine("Actual:");
 					Console.Write(actual);
+                    Console.ReadKey(true); //Us Visual Studio users don't get to press a key before the app closes. This must be added directly in the code.
 					Environment.Exit(1);
 				}
 			}

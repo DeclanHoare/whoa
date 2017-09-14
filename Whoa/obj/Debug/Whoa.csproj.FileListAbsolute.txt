@@ -1,0 +1,4 @@
+C:\Users\Michael\Documents\whoa\Whoa\bin\Debug\Whoa.dll
+C:\Users\Michael\Documents\whoa\Whoa\bin\Debug\Whoa.pdb
+C:\Users\Michael\Documents\whoa\Whoa\obj\Debug\Whoa.dll
+C:\Users\Michael\Documents\whoa\Whoa\obj\Debug\Whoa.pdb
