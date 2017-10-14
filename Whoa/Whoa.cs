@@ -190,6 +190,18 @@ namespace Whoa
 					return Enum.ToObject(t, DeserialiseObjectWorker(Enum.GetUnderlyingType(t), fobj));
 				}
 				
+				if (t.IsArray)
+				{
+					int numelems = read.ReadInt32();
+					if (numelems < 0)
+						return null;
+					dynamic reta = Activator.CreateInstance(t, new object[] { numelems });
+					Type elemtype = t.GetElementType();
+					for (int i = 0; i < numelems; i++)
+						reta[i] = (dynamic)DeserialiseObjectWorker(elemtype, fobj);
+					return reta;
+				}
+				
 				if (t.IsGenericType)
 				{
 					var gent = t.GetGenericTypeDefinition();
@@ -295,6 +307,19 @@ namespace Whoa
 				{
 					Type realt = Enum.GetUnderlyingType(t);
 					SerialiseObjectWorker(fobj, Convert.ChangeType(obj, realt), realt);
+					return;
+				}
+				
+				if (t.IsArray)
+				{
+					if (obj == null)
+					{
+						write.Write(-1);
+						return;
+					}
+					write.Write(obj.Length);
+					foreach (dynamic item in obj)
+						SerialiseObjectWorker(fobj, item, item.GetType());
 					return;
 				}
 				

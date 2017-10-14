@@ -120,6 +120,9 @@ namespace Whoa.Tests
 			[Order]
 			public Details details;
 			
+			[Order]
+			public string[] thisIsAnArrayNotAList;
+			
 			public override string ToString()
 			{
 				string ret = $@"{title}
@@ -158,6 +161,7 @@ Category: {kind}.
 Is catchy: {details.HasFlag(Details.Catchy)}.
 Is popular: {details.HasFlag(Details.Popular)}.
 Is terrible: {details.HasFlag(Details.Terrible)}.
+The second entry of an array that isn't a list is: {thisIsAnArrayNotAList[1]}
 ";
 				return ret;
 			}
@@ -205,7 +209,14 @@ Is terrible: {details.HasFlag(Details.Terrible)}.
 					reallyReallyReallyReallyReallyReallyBigNumber = BigInteger.Parse("41290871590318501381209471092481204"),
 					releaseDate = new DateTime(2015, 04, 20),
 					kind = RecordType.EP,
-					details = Details.Catchy | Details.Popular
+					details = Details.Catchy | Details.Popular,
+					thisIsAnArrayNotAList = new string[]
+					{
+						"The freedom to run the program as you wish, for any purpose (freedom 0).",
+						"The freedom to study how the program works, and change it so it does your computing as you wish (freedom 1). Access to the source code is a precondition for this.",
+						"The freedom to redistribute copies so you can help your neighbor (freedom 2).",
+						"The freedom to distribute copies of your modified versions to others (freedom 3). By doing this you can give the whole community a chance to benefit from your changes. Access to the source code is a precondition for this."
+					}
 				};
 				string expected = rec.ToString();
 				Whoa.SerialiseObject(str, rec);
