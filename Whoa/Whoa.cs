@@ -24,114 +24,243 @@ using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Reflection;
 using System.Numerics;
+using System.Runtime.Serialization;
+using System.Drawing;
+using System.Drawing.Imaging;
 
 namespace Whoa
 {
 	public static class Whoa
-	{		
-		private class SpecialSerialiserAttribute: Attribute
+	{
+		private enum SpecialSizes
 		{
-			public Type t { get; private set; }
-			public SpecialSerialiserAttribute(Type in_t)
+			Null = -1,
+			ReferenceEqual = -2 // not used yet...
+		}
+		
+		private static Dictionary<Type, dynamic> SpecialSerialisers = new Dictionary<Type, dynamic>();
+		
+		static Whoa()
+		{
+			foreach (Type t in typeof(Whoa).GetNestedTypes(BindingFlags.NonPublic))
 			{
-				t = in_t;
-			}
-		}
-		
-		private class SpecialDeserialiserAttribute: Attribute
-		{
-			public Type t { get; private set; }
-			public SpecialDeserialiserAttribute(Type in_t)
-			{
-				t = in_t;
-			}
-		}
-		
-		[SpecialSerialiser(typeof(Guid))]
-		private static void SerialiseGuid(Stream fobj, dynamic obj)
-		{
-			fobj.Write(obj.ToByteArray(), 0, 16);
-		}
-		
-		[SpecialDeserialiser(typeof(Guid))]
-		private static object DeserialiseGuid(Stream fobj)
-		{
-			var guid = new byte[16];
-			fobj.Read(guid, 0, 16);
-			return new Guid(guid);
-		}
-		
-		[SpecialSerialiser(typeof(BigInteger))]
-		private static void SerialiseBigInt(Stream fobj, dynamic obj)
-		{
-			SerialiseObject(fobj, new List<byte>(obj.ToByteArray()));
-		}
-		
-		[SpecialDeserialiser(typeof(BigInteger))]
-		private static object DeserialiseBigInt(Stream fobj)
-		{
-			return new BigInteger((DeserialiseObject(typeof(List<byte>), fobj) as List<byte>).ToArray());
-		}
-		
-		[SpecialSerialiser(typeof(string))]
-		private static void SerialiseString(Stream fobj, dynamic obj)
-		{
-			using (var write = new BinaryWriter(fobj, Encoding.UTF8, true))
-			{
-				byte[] bytes = null;
-				int len;
-				if (obj == null)
-					len = -1;
-				else
+				if (t.GetInterfaces().Any(i => i.IsGenericType && i.GetGenericTypeDefinition() == typeof(ISpecialSerialiser<>)))
 				{
-					bytes = Encoding.UTF8.GetBytes(obj);
-					len = bytes.Length;
-				}
-				typeof(BinaryWriter).GetMethod("Write7BitEncodedInt", BindingFlags.Instance | BindingFlags.NonPublic).Invoke(write, new object[] { len });
-				if (bytes != null)
-					fobj.Write(bytes, 0, len);
-			}
-		}
-		
-		[SpecialDeserialiser(typeof(string))]
-		private static object DeserialiseString(Stream fobj)
-		{
-			using (var read = new BinaryReader(fobj, Encoding.UTF8, true))
-			{
-				int len = (int)typeof(BinaryReader).GetMethod("Read7BitEncodedInt", BindingFlags.Instance | BindingFlags.NonPublic).Invoke(read, new object[] { });
-				if (len < 0)
-					return null;
-				else
-				{
-					var bytes = new byte[len];
-					fobj.Read(bytes, 0, len);
-					return Encoding.UTF8.GetString(bytes);
+					RegisterSpecialSerialiser((dynamic)Activator.CreateInstance(t));
 				}
 			}
 		}
 		
-		[SpecialSerialiser(typeof(DateTime))]
-		private static void SerialiseDateTime(Stream fobj, dynamic obj)
+		public static void RegisterSpecialSerialiser<T>(ISpecialSerialiser<T> serialiser)
 		{
-			using (var write = new BinaryWriter(fobj, Encoding.UTF8, true))
-				write.Write(obj.ToBinary());
+			SpecialSerialisers.Add(typeof(T), serialiser);
 		}
 		
-		[SpecialDeserialiser(typeof(DateTime))]
-		private static object DeserialiseDateTime(Stream fobj)
+		private class GuidSerialiser: ISpecialSerialiser<Guid>
 		{
-			using (var read = new BinaryReader(fobj, Encoding.UTF8, true))
-				return DateTime.FromBinary(read.ReadInt64());
+			public void SerialiseObject(Stream fobj, Guid obj)
+			{
+				fobj.Write(obj.ToByteArray(), 0, 16);
+			}
+			
+			public Guid DeserialiseObject(Stream fobj)
+			{
+				var guid = new byte[16];
+				fobj.Read(guid, 0, 16);
+				return new Guid(guid);
+			}
 		}
 		
-		private static IOrderedEnumerable<MemberInfo> Members(Type t)
+		private class BigIntegerSerialiser: ISpecialSerialiser<BigInteger>
 		{
-			return t.GetProperties().Select(m => m as MemberInfo).Concat(t.GetFields().Select(m => m as MemberInfo)).Where(m => (m.GetCustomAttributes(typeof(OrderAttribute), false).SingleOrDefault() as OrderAttribute) != null).OrderBy(m => (m.GetCustomAttributes(typeof(OrderAttribute), false).SingleOrDefault() as OrderAttribute).Order);
+			public void SerialiseObject(Stream fobj, BigInteger obj)
+			{
+				using (var write = new BinaryWriter(fobj, Encoding.UTF8, true))
+				{
+					byte[] bytes = obj.ToByteArray();
+					write.Write(bytes.Length);
+					write.Write(bytes);
+				}
+			}
+			
+			public BigInteger DeserialiseObject(Stream fobj)
+			{
+				using (var read = new BinaryReader(fobj, Encoding.UTF8, true))
+					return new BigInteger(read.ReadBytes(read.ReadInt32()));
+			}
+		}
+		
+		private class StringSerialiser: ISpecialSerialiser<string>
+		{
+			private class FriendlyBinaryWriter: BinaryWriter
+			{
+				public FriendlyBinaryWriter(Stream fobj) : base(fobj, Encoding.UTF8, true)
+				{
+				}
+				public void Write7BitEncodedIntPublic(int value)
+				{
+					Write7BitEncodedInt(value);
+				}
+			}
+			
+			private class FriendlyBinaryReader: BinaryReader
+			{
+				public FriendlyBinaryReader(Stream fobj) : base(fobj, Encoding.UTF8, true)
+				{
+				}
+				public int Read7BitEncodedIntPublic()
+				{
+					return Read7BitEncodedInt();
+				}
+			}
+			public void SerialiseObject(Stream fobj, string obj)
+			{
+				using (var write = new FriendlyBinaryWriter(fobj))
+				{
+					byte[] bytes = null;
+					int len;
+					if (obj == null)
+						len = (int)SpecialSizes.Null;
+					else
+					{
+						bytes = Encoding.UTF8.GetBytes(obj);
+						len = bytes.Length;
+					}
+					write.Write7BitEncodedIntPublic(len);
+					if (bytes != null)
+						write.Write(bytes);
+				}
+			}
+			
+			public string DeserialiseObject(Stream fobj)
+			{
+				using (var read = new FriendlyBinaryReader(fobj))
+				{
+					int len = read.Read7BitEncodedIntPublic();
+					if (len == (int)SpecialSizes.Null)
+						return null;
+					return Encoding.UTF8.GetString(read.ReadBytes(len));
+				}
+			}
+		}
+		
+		private class DateTimeSerialiser: ISpecialSerialiser<DateTime>
+		{
+			public void SerialiseObject(Stream fobj, DateTime obj)
+			{
+				using (var write = new BinaryWriter(fobj, Encoding.UTF8, true))
+					write.Write(obj.ToBinary());
+			}
+			
+			public DateTime DeserialiseObject(Stream fobj)
+			{
+				using (var read = new BinaryReader(fobj, Encoding.UTF8, true))
+					return DateTime.FromBinary(read.ReadInt64());
+			}
+		}
+		
+		private class ColorSerialiser: ISpecialSerialiser<Color>
+		{
+			public void SerialiseObject(Stream fobj, Color obj)
+			{
+				using (var write = new BinaryWriter(fobj, Encoding.UTF8, true))
+					write.Write(obj.ToArgb());
+			}
+			
+			public Color DeserialiseObject(Stream fobj)
+			{
+				using (var read = new BinaryReader(fobj, Encoding.UTF8, true))
+					return Color.FromArgb(read.ReadInt32());
+			}
+		}
+		
+		private class FontSerialiser: ISpecialSerialiser<Font>
+		{
+			public void SerialiseObject(Stream fobj, Font obj)
+			{
+				using (var write = new BinaryWriter(fobj, Encoding.UTF8, true))
+				{
+					write.Write(obj.FontFamily.Name);
+					write.Write(obj.Size);
+					write.Write((int)obj.Style);
+					write.Write((int)obj.Unit);
+					write.Write(obj.GdiCharSet);
+					write.Write(obj.GdiVerticalFont);
+				}
+			}
+			
+			public Font DeserialiseObject(Stream fobj)
+			{
+				using (var read = new BinaryReader(fobj, Encoding.UTF8, true))
+					return new Font(read.ReadString(), read.ReadSingle(), (FontStyle)read.ReadInt32(), (GraphicsUnit)read.ReadInt32(), read.ReadByte(), read.ReadBoolean());
+			}
+		}
+		
+		private class ImageSerialiser: ISpecialSerialiser<Image>
+		{
+			public void SerialiseObject(Stream fobj, Image obj)
+			{
+				// Images can be saved to Streams but the image data will
+				// be "invalid" if the Stream it is written to starts at a
+				// non-zero position, so we need to buffer.
+				using (var mstr = new MemoryStream())
+				using (var write = new BinaryWriter(fobj, Encoding.UTF8, true))
+				{
+					obj.Save(mstr, ImageFormat.Png);
+					mstr.Position = 0;
+					write.Write((int)mstr.Length);
+					mstr.CopyTo(fobj);
+				}
+			}
+			
+			public Image DeserialiseObject(Stream fobj)
+			{
+				// Images can be loaded from Streams but they must remain
+				// open for the lifetime of the Image, so, to avoid needing
+				// a handle on the file being loaded from, we buffer on read
+				// too.
+				using (var read = new BinaryReader(fobj, Encoding.UTF8, true))
+					return Image.FromStream(new MemoryStream(read.ReadBytes(read.ReadInt32())));
+			}
+		}
+		
+		private class StreamSerialiser: ISpecialSerialiser<Stream>
+		{
+			public void SerialiseObject(Stream fobj, Stream obj)
+			{
+				using (var write = new BinaryWriter(fobj, Encoding.UTF8, true))
+				{
+					obj.Position = 0;
+					write.Write((int)obj.Length);
+					obj.CopyTo(fobj);
+				}
+			}
+			
+			public Stream DeserialiseObject(Stream fobj)
+			{
+				using (var read = new BinaryReader(fobj, Encoding.UTF8, true))
+					return new MemoryStream(read.ReadBytes(read.ReadInt32()));
+			}
+		}
+		
+		private static IOrderedEnumerable<MemberInfo> Members(Type t, SerialisationOptions options)
+		{
+			BindingFlags flags = BindingFlags.Instance | BindingFlags.Public;
+			if (options.HasFlag(SerialisationOptions.NonPublic))
+				flags |= BindingFlags.NonPublic;
+			if (options.HasFlag(SerialisationOptions.FlattenHierarchy))
+				flags |= BindingFlags.FlattenHierarchy;
+			var all = t.GetMembers(flags).Where(m => m.MemberType == MemberTypes.Field || m.MemberType == MemberTypes.Property);
+			int i = 0;
+			if (options.HasFlag(SerialisationOptions.NonSerialized))
+				return all.Where(m => (m.GetCustomAttributes(typeof(NonSerializedAttribute), false).SingleOrDefault() == null)).OrderBy(m => i++);
+			else
+				return all.Where(m => (m.GetCustomAttributes(typeof(OrderAttribute), false).SingleOrDefault() != null)).OrderBy(m => (m.GetCustomAttributes(typeof(OrderAttribute), false).SingleOrDefault() as OrderAttribute).Order);
 		}
 		
 		private static List<bool> ReadBitfield(Stream fobj, int count)
 		{
-			if (count < 0)
+			if (count == (int)SpecialSizes.Null)
 				return null;
 			sbyte bit = 7;
 			int cur = 0;
@@ -173,32 +302,39 @@ namespace Whoa
 			fobj.Write(bitfields, 0, bitfields.Length);
 		}
 		
-		public static T DeserialiseObject<T>(Stream fobj)
+		public static T DeserialiseObject<T>(Stream fobj, SerialisationOptions options = SerialisationOptions.None)
 		{
-			return (T)DeserialiseObject(typeof(T), fobj);
+			return (T)DeserialiseObject(typeof(T), fobj, options);
 		}
 		
-		private static object DeserialiseObjectWorker(Type t, Stream fobj)
+		private static object DeserialiseObjectWorker(Type t, Stream fobj, SerialisationOptions options)
 		{
 #if DEBUG
 			Console.WriteLine("Deserialising object of type: " + t.ToString());
 #endif
 			using (var read = new BinaryReader(fobj, Encoding.UTF8, true))
 			{
+				// Look for a special serialiser for this type.
+				dynamic special = null;
+				if (SpecialSerialisers.TryGetValue(t, out special))
+				{
+					return special.DeserialiseObject(fobj);
+				}
+				
 				if (t.IsEnum)
 				{
-					return Enum.ToObject(t, DeserialiseObjectWorker(Enum.GetUnderlyingType(t), fobj));
+					return Enum.ToObject(t, DeserialiseObjectWorker(Enum.GetUnderlyingType(t), fobj, options));
 				}
 				
 				if (t.IsArray)
 				{
 					int numelems = read.ReadInt32();
-					if (numelems < 0)
+					if (numelems == (int)SpecialSizes.Null)
 						return null;
 					dynamic reta = Activator.CreateInstance(t, new object[] { numelems });
 					Type elemtype = t.GetElementType();
 					for (int i = 0; i < numelems; i++)
-						reta[i] = (dynamic)DeserialiseObjectWorker(elemtype, fobj);
+						reta[i] = (dynamic)DeserialiseObjectWorker(elemtype, fobj, options);
 					return reta;
 				}
 				
@@ -209,61 +345,49 @@ namespace Whoa
 					if (gent == typeof(Nullable<>))
 					{
 						bool extant = read.ReadBoolean();
-						return extant ? DeserialiseObjectWorker(t.GetGenericArguments()[0], fobj) : null;
+						return extant ? DeserialiseObjectWorker(t.GetGenericArguments()[0], fobj, options) : null;
 					}
 					
 					if (gent == typeof(List<>))
 					{
 						int numelems = read.ReadInt32();
-						if (numelems < 0)
+						if (numelems == (int)SpecialSizes.Null)
 							return null;
 						dynamic retl = Activator.CreateInstance(t, new object[] { numelems });
 						Type elemtype = t.GetGenericArguments()[0];
 						for (int i = 0; i < numelems; i++)
-							retl.Add((dynamic)DeserialiseObjectWorker(elemtype, fobj));
+							retl.Add((dynamic)DeserialiseObjectWorker(elemtype, fobj, options));
 						return retl;
 					}
 					
 					if (gent == typeof(Dictionary<,>))
 					{
 						int numpairs = read.ReadInt32();
-						if (numpairs < 0)
+						if (numpairs == (int)SpecialSizes.Null)
 							return null;
 						dynamic retd = Activator.CreateInstance(t, new object[] { numpairs });
 						Type[] arguments = t.GetGenericArguments();
 						for (int i = 0; i < numpairs; i++)
 						{
-							dynamic key = DeserialiseObjectWorker(arguments[0], fobj);
-							dynamic val = DeserialiseObjectWorker(arguments[1], fobj);
+							dynamic key = DeserialiseObjectWorker(arguments[0], fobj, options);
+							dynamic val = DeserialiseObjectWorker(arguments[1], fobj, options);
 							retd.Add(key, val);
 						}
 						return retd;
 					}
 				}
 				
-				// A little self reflection.
-				var specialmethod = typeof(Whoa).GetMethods(BindingFlags.Static | BindingFlags.NonPublic).FirstOrDefault(m =>
-				{
-					var attr = m.GetCustomAttributes(typeof(SpecialDeserialiserAttribute), false).SingleOrDefault() as SpecialDeserialiserAttribute;
-					if (attr == null)
-						return false;
-					return attr.t == t;
-				});
-				
-				if (specialmethod != null)
-					return specialmethod.Invoke(null, new object[] { fobj });
-				
 				var readermethod = typeof(BinaryReader).GetMethods().FirstOrDefault(m => m.Name.Length > 4 && m.Name.StartsWith("Read") && m.ReturnType == t);
 				if (readermethod != null)
 					return readermethod.Invoke(read, new object[] { });
 				
 				int nummembers = read.ReadInt32();
-				if (nummembers < 0)
+				if (nummembers == (int)SpecialSizes.Null)
 					return null;
 				object ret = t.GetConstructor(Type.EmptyTypes).Invoke(new object[] { });
 				var bools = new List<dynamic>();
 				
-				foreach (dynamic member in Members(t).Take(nummembers))
+				foreach (dynamic member in Members(t, options).Take(nummembers))
 				{
 					Type memt;
 					if (member.MemberType == MemberTypes.Field)
@@ -278,7 +402,7 @@ namespace Whoa
 					else if (memt == typeof(bool[]))
 						member.SetValue(ret, ReadBitfield(fobj, read.ReadInt32()).ToArray());
 					else
-						member.SetValue(ret, DeserialiseObjectWorker(memt, fobj));
+						member.SetValue(ret, DeserialiseObjectWorker(memt, fobj, options));
 				}
 				
 				if (bools.Count > 0)
@@ -291,22 +415,32 @@ namespace Whoa
 			}
 		}
 		
-		public static void SerialiseObject(Stream fobj, dynamic obj)
+		public static void SerialiseObject<T>(Stream fobj, T obj, SerialisationOptions options = SerialisationOptions.None)
 		{
-			SerialiseObject(fobj, obj, obj.GetType());
+			Type t = typeof(T);
+			if ((t == typeof(object)) && obj != null)
+				t = obj.GetType();
+			SerialiseObject(t, fobj, obj, options);
 		}
 		
-		private static void SerialiseObjectWorker(Stream fobj, dynamic obj, Type t)
+		private static void SerialiseObjectWorker(Stream fobj, dynamic obj, Type t, SerialisationOptions options)
 		{
 #if DEBUG
 			Console.WriteLine("Serialising object of type: " + t.ToString());
 #endif
 			using (var write = new BinaryWriter(fobj, Encoding.UTF8, true))
 			{
+				// Look for a special serialiser for this type.
+				dynamic special = null;
+				if (SpecialSerialisers.TryGetValue(t, out special))
+				{
+					special.SerialiseObject(fobj, obj);
+					return;
+				}
 				if (t.IsEnum)
 				{
 					Type realt = Enum.GetUnderlyingType(t);
-					SerialiseObjectWorker(fobj, Convert.ChangeType(obj, realt), realt);
+					SerialiseObjectWorker(fobj, Convert.ChangeType(obj, realt), realt, options);
 					return;
 				}
 				
@@ -314,12 +448,12 @@ namespace Whoa
 				{
 					if (obj == null)
 					{
-						write.Write(-1);
+						write.Write((int)SpecialSizes.Null);
 						return;
 					}
 					write.Write(obj.Length);
 					foreach (dynamic item in obj)
-						SerialiseObjectWorker(fobj, item, item.GetType());
+						SerialiseObjectWorker(fobj, item, item.GetType(), options);
 					return;
 				}
 				
@@ -332,7 +466,7 @@ namespace Whoa
 						bool extant = obj != null;
 						write.Write(extant);
 						if (extant)
-							SerialiseObjectWorker(fobj, obj, t.GetGenericArguments()[0]);
+							SerialiseObjectWorker(fobj, obj, t.GetGenericArguments()[0], options);
 						return;
 					}
 					
@@ -340,12 +474,12 @@ namespace Whoa
 					{
 						if (obj == null)
 						{
-							write.Write(-1);
+							write.Write((int)SpecialSizes.Null);
 							return;
 						}
 						write.Write(obj.Count);
 						foreach (dynamic item in obj)
-							SerialiseObjectWorker(fobj, item, item.GetType());
+							SerialiseObjectWorker(fobj, item, item.GetType(), options);
 						return;
 					}
 					
@@ -353,36 +487,22 @@ namespace Whoa
 					{
 						if (obj == null)
 						{
-							write.Write(-1);
+							write.Write((int)SpecialSizes.Null);
 							return;
 						}
 						write.Write(obj.Count);
 						foreach (dynamic pair in obj)
 						{
-							SerialiseObjectWorker(fobj, pair.Key, pair.Key.GetType());
-							SerialiseObjectWorker(fobj, pair.Value, pair.Value.GetType());
+							SerialiseObjectWorker(fobj, pair.Key, pair.Key.GetType(), options);
+							SerialiseObjectWorker(fobj, pair.Value, pair.Value.GetType(), options);
 						}
 						return;
 					}
 				}
 				
-				var specialmethod = typeof(Whoa).GetMethods(BindingFlags.Static | BindingFlags.NonPublic).FirstOrDefault(m =>
-				{
-					var attr = m.GetCustomAttributes(typeof(SpecialSerialiserAttribute), false).SingleOrDefault() as SpecialSerialiserAttribute;
-					if (attr == null)
-						return false;
-					return attr.t == t;
-				});
-				
-				if (specialmethod != null)
-				{
-					specialmethod.Invoke(null, new object[] { fobj, obj });
-					return;
-				}
-				
 				try
 				{
-					write.Write(obj); // Will fail if not an integral type
+					write.Write(obj); // Will fail if not a primitive type
 					return;
 				}
 				catch
@@ -391,12 +511,15 @@ namespace Whoa
 				
 				if (obj == null)
 				{
-					write.Write(-1);
+					write.Write((int)SpecialSizes.Null);
 					return;
 				}
 				
+				if (options.HasFlag(SerialisationOptions.RequireSerializable) && t.GetCustomAttributes(typeof(SerializableAttribute), false).SingleOrDefault() == null)
+					throw new SerializationException($"{t} is not serialisable.");
+				
 				var bools = new List<bool>();
-				var members = Members(t);
+				var members = Members(t, options);
 				write.Write(members.Count());
 				
 				foreach (dynamic member in members)
@@ -413,7 +536,7 @@ namespace Whoa
 					{
 						var val = member.GetValue(obj) as IEnumerable<bool>;
 						if (val == null)
-							write.Write(-1);
+							write.Write((int)SpecialSizes.Null);
 						else
 						{
 							write.Write(val.Count());
@@ -423,39 +546,56 @@ namespace Whoa
 					else
 					{
 						dynamic val = member.GetValue(obj);
-						SerialiseObjectWorker(fobj, val, memt);
+						SerialiseObjectWorker(fobj, val, memt, options);
 					}
 					
 				}
 				
 				WriteBitfield(fobj, bools);
-				
 			}
 		}
 		
-		public static void SerialiseObject(Stream fobj, dynamic obj, Type t)
+		public static void SerialiseObject(Type t, Stream fobj, dynamic obj, SerialisationOptions options = SerialisationOptions.None)
 		{
 			try
 			{
-				SerialiseObjectWorker(fobj, obj, t);
+				SerialiseObjectWorker(fobj, obj, t, options);
 			}
 			catch (Exception ex)
 			{
-				ex.Data.Add("Whoa: Type", t);
-				ex.Data.Add("Whoa: Object", obj);
+				try
+				{
+					ex.Data.Add("Whoa: Type", t);
+					ex.Data.Add("Whoa: Object", obj);
+				}
+				catch // Stifle this exception and throw the important one
+				{
+				}
 				throw ex;
 			}
 		}
 		
-		public static object DeserialiseObject(Type t, Stream fobj)
+		[Obsolete("This argument order is weird.")]
+		public static void SerialiseObject(Stream fobj, dynamic obj, Type t)
+		{
+			SerialiseObject(t, fobj, obj);
+		}
+		
+		public static object DeserialiseObject(Type t, Stream fobj, SerialisationOptions options = SerialisationOptions.None)
 		{
 			try
 			{
-				return DeserialiseObjectWorker(t, fobj);
+				return DeserialiseObjectWorker(t, fobj, options);
 			}
 			catch (Exception ex)
 			{
-				ex.Data.Add("Whoa: Type", t);
+				try
+				{
+					ex.Data.Add("Whoa: Type", t);
+				}
+				catch
+				{
+				}
 				throw ex;
 			}
 		}

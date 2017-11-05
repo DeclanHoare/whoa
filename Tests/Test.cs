@@ -19,6 +19,7 @@ using System.IO;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
+using System.Drawing;
 using Whoa;
 
 namespace Whoa.Tests
@@ -42,86 +43,94 @@ namespace Whoa.Tests
 		
 		private class Record
 		{
-			[Order]
+			
 			public string title;
 			
-			[Order]
+			
 			public string artist;
 			
-			[Order]
-			public int rpm;
 			
-			[Order]
+			public int rpm { get; set; }
+			
+			
 			public double price;
 			
-			[Order]
+			
 			public bool inLibrary;
 			
-			[Order]
+			
 			public bool otherBool;
 			
-			[Order]
+			
 			public List<string> songs;
 			
-			[Order]
+			
 			public Guid guidForSomeReason;
 			
-			[Order]
+			
 			public List<bool> moreBools;
 			
-			[Order]
+			
 			public string awards;
 			
-			[Order]
+			
 			public int? profits;
 			
-			[Order]
+			
 			public int? losses;
 			
-			[Order]
+			
 			public List<int> somethingElse;
 			
-			[Order]
+			
 			public Dictionary<string, string> staff;
 			
-			[Order]
+			
 			public Dictionary<string, string> plausibleSampleData;
 			
-			[Order]
+			
 			public List<bool> notActuallyMoreBools;
 			
-			[Order]
+			
 			public bool boolThree;
 			
-			[Order]
+			
 			public bool boolFour;
 			
-			[Order]
+			
 			public bool boolFive;
 			
-			[Order]
+			
 			public bool boolSix;
 			
-			[Order]
+			
 			public bool boolSeven;
 			
-			[Order]
+			
 			public bool boolEight;
 			
-			[Order]
+			
 			public BigInteger reallyReallyReallyReallyReallyReallyBigNumber;
 			
-			[Order]
+			
 			public DateTime releaseDate;
 			
-			[Order]
+			
 			public RecordType kind;
 			
-			[Order]
+			
 			public Details details;
 			
-			[Order]
+			
 			public string[] thisIsAnArrayNotAList;
+			
+			public Image img;
+			
+			public Color colour;
+			
+			public Font font;
+			
+			public Stream data;
 			
 			public override string ToString()
 			{
@@ -150,6 +159,8 @@ Released: {releaseDate}
 					ret += $"{pair.Key} - {pair.Value}" + Environment.NewLine;
 				ret += "Null dictionaries work: " + (plausibleSampleData == null ? "Yes" : "No") + Environment.NewLine;
 				ret += "Null bool lists work: " + (notActuallyMoreBools == null ? "Yes" : "No") + Environment.NewLine;
+				byte[] buf = new byte[data.Length];
+				data.Read(buf, 0, buf.Length);
 				ret += $@"boolThree = {boolThree}
 boolFour = {boolFour}
 boolFive = {boolFive}
@@ -162,13 +173,17 @@ Is catchy: {details.HasFlag(Details.Catchy)}.
 Is popular: {details.HasFlag(Details.Popular)}.
 Is terrible: {details.HasFlag(Details.Terrible)}.
 The second entry of an array that isn't a list is: {thisIsAnArrayNotAList[1]}
+{img.Width}
+{colour.R} {colour.G} {colour.B} {colour.A}
+{font}
+{System.Text.Encoding.UTF8.GetString(buf)}
 ";
 				return ret;
 			}
 		}
 		public static void Main(string[] args)
 		{
-			using (var str = new MemoryStream())
+			using (var str = args.Length > 0 ? (File.Open(args[0], FileMode.Create) as Stream) : (new MemoryStream() as Stream))
 			{
 				var rec = new Record()
 				{
@@ -216,18 +231,16 @@ The second entry of an array that isn't a list is: {thisIsAnArrayNotAList[1]}
 						"The freedom to study how the program works, and change it so it does your computing as you wish (freedom 1). Access to the source code is a precondition for this.",
 						"The freedom to redistribute copies so you can help your neighbor (freedom 2).",
 						"The freedom to distribute copies of your modified versions to others (freedom 3). By doing this you can give the whole community a chance to benefit from your changes. Access to the source code is a precondition for this."
-					}
+					},
+					img = new Bitmap(800, 600),
+					colour = Color.FromArgb(255, 127, 0),
+					font = new Font("Times New Roman", 12),
+					data = new MemoryStream(System.Text.Encoding.UTF8.GetBytes("what's up, gamers?"))
 				};
 				string expected = rec.ToString();
-				Whoa.SerialiseObject(str, rec);
-				if (args.Length > 0) // Save output for debugging.
-				{
-					str.Position = 0;
-					using (var fobj = File.OpenWrite(args[0]))
-						str.CopyTo(fobj);
-				}
+				Whoa.SerialiseObject(str, rec, SerialisationOptions.NonSerialized);
 				str.Position = 0;
-				var res = Whoa.DeserialiseObject<Record>(str);
+				var res = Whoa.DeserialiseObject<Record>(str, SerialisationOptions.NonSerialized);
 				string actual = res.ToString();
 				Console.Write("Test ");
 				if (expected == actual)
