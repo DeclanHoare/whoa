@@ -323,7 +323,7 @@ namespace Whoa
 				
 				if (t.IsEnum)
 				{
-					return Enum.ToObject(t, DeserialiseObjectWorker(Enum.GetUnderlyingType(t), fobj, options));
+					return Enum.ToObject(t, DeserialiseObject(Enum.GetUnderlyingType(t), fobj, options));
 				}
 				
 				if (t.IsArray)
@@ -334,7 +334,7 @@ namespace Whoa
 					dynamic reta = Activator.CreateInstance(t, new object[] { numelems });
 					Type elemtype = t.GetElementType();
 					for (int i = 0; i < numelems; i++)
-						reta[i] = (dynamic)DeserialiseObjectWorker(elemtype, fobj, options);
+						reta[i] = (dynamic)DeserialiseObject(elemtype, fobj, options);
 					return reta;
 				}
 				
@@ -345,7 +345,7 @@ namespace Whoa
 					if (gent == typeof(Nullable<>))
 					{
 						bool extant = read.ReadBoolean();
-						return extant ? DeserialiseObjectWorker(t.GetGenericArguments()[0], fobj, options) : null;
+						return extant ? DeserialiseObject(t.GetGenericArguments()[0], fobj, options) : null;
 					}
 					
 					if (gent == typeof(List<>))
@@ -356,7 +356,7 @@ namespace Whoa
 						dynamic retl = Activator.CreateInstance(t, new object[] { numelems });
 						Type elemtype = t.GetGenericArguments()[0];
 						for (int i = 0; i < numelems; i++)
-							retl.Add((dynamic)DeserialiseObjectWorker(elemtype, fobj, options));
+							retl.Add((dynamic)DeserialiseObject(elemtype, fobj, options));
 						return retl;
 					}
 					
@@ -369,8 +369,8 @@ namespace Whoa
 						Type[] arguments = t.GetGenericArguments();
 						for (int i = 0; i < numpairs; i++)
 						{
-							dynamic key = DeserialiseObjectWorker(arguments[0], fobj, options);
-							dynamic val = DeserialiseObjectWorker(arguments[1], fobj, options);
+							dynamic key = DeserialiseObject(arguments[0], fobj, options);
+							dynamic val = DeserialiseObject(arguments[1], fobj, options);
 							retd.Add(key, val);
 						}
 						return retd;
@@ -402,7 +402,7 @@ namespace Whoa
 					else if (memt == typeof(bool[]))
 						member.SetValue(ret, ReadBitfield(fobj, read.ReadInt32()).ToArray());
 					else
-						member.SetValue(ret, DeserialiseObjectWorker(memt, fobj, options));
+						member.SetValue(ret, DeserialiseObject(memt, fobj, options));
 				}
 				
 				if (bools.Count > 0)
@@ -440,7 +440,7 @@ namespace Whoa
 				if (t.IsEnum)
 				{
 					Type realt = Enum.GetUnderlyingType(t);
-					SerialiseObjectWorker(fobj, Convert.ChangeType(obj, realt), realt, options);
+					SerialiseObject(realt, fobj, Convert.ChangeType(obj, realt), options);
 					return;
 				}
 				
@@ -453,7 +453,7 @@ namespace Whoa
 					}
 					write.Write(obj.Length);
 					foreach (dynamic item in obj)
-						SerialiseObjectWorker(fobj, item, item.GetType(), options);
+						SerialiseObject(item.GetType(), fobj, item, options);
 					return;
 				}
 				
@@ -466,7 +466,7 @@ namespace Whoa
 						bool extant = obj != null;
 						write.Write(extant);
 						if (extant)
-							SerialiseObjectWorker(fobj, obj, t.GetGenericArguments()[0], options);
+							SerialiseObject(t.GetGenericArguments()[0], fobj, obj, options);
 						return;
 					}
 					
@@ -479,7 +479,7 @@ namespace Whoa
 						}
 						write.Write(obj.Count);
 						foreach (dynamic item in obj)
-							SerialiseObjectWorker(fobj, item, item.GetType(), options);
+							SerialiseObject(item.GetType(), fobj, item, options);
 						return;
 					}
 					
@@ -493,8 +493,8 @@ namespace Whoa
 						write.Write(obj.Count);
 						foreach (dynamic pair in obj)
 						{
-							SerialiseObjectWorker(fobj, pair.Key, pair.Key.GetType(), options);
-							SerialiseObjectWorker(fobj, pair.Value, pair.Value.GetType(), options);
+							SerialiseObject(pair.Key.GetType(), fobj, pair.Key, options);
+							SerialiseObject(pair.Value.GetType(), fobj, pair.Value, options);
 						}
 						return;
 					}
@@ -546,7 +546,7 @@ namespace Whoa
 					else
 					{
 						dynamic val = member.GetValue(obj);
-						SerialiseObjectWorker(fobj, val, memt, options);
+						SerialiseObject(memt, fobj, val, options);
 					}
 					
 				}
@@ -571,7 +571,7 @@ namespace Whoa
 				catch // Stifle this exception and throw the important one
 				{
 				}
-				throw ex;
+				throw;
 			}
 		}
 		
@@ -596,7 +596,7 @@ namespace Whoa
 				catch
 				{
 				}
-				throw ex;
+				throw;
 			}
 		}
 	}
