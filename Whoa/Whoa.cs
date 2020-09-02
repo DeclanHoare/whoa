@@ -15,6 +15,7 @@
 // along with Whoa.  If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -35,25 +36,32 @@ namespace Whoa
 		private enum SpecialSizes
 		{
 			Null = -1,
-			ReferenceEqual = -2 // not used yet...
+			ReferenceEqual = -2 // not used yet...  Or Ever!
 		}
 		
-		private static Dictionary<Type, dynamic> SpecialSerialisers = new Dictionary<Type, dynamic>();
+		private static Dictionary<Type, ISpecialSerialiser> SpecialSerialisers = new Dictionary<Type, ISpecialSerialiser>();
 		
 		static Whoa()
 		{
 			foreach (Type t in typeof(Whoa).GetNestedTypes(BindingFlags.NonPublic))
 			{
-				if (t.GetInterfaces().Any(i => i.IsGenericType && i.GetGenericTypeDefinition() == typeof(ISpecialSerialiser<>)))
+				var iface = t.GetInterfaces().FirstOrDefault(i => i.IsGenericType && i.GetGenericTypeDefinition() == typeof(ISpecialSerialiser<>));
+				if (iface != null)
 				{
-					RegisterSpecialSerialiser((dynamic)Activator.CreateInstance(t));
+					var target = iface.GetGenericArguments()[0];
+
+					SpecialSerialisers.Add(target,
+						(ISpecialSerialiser)Activator.CreateInstance(
+							typeof(UngenericSpecialSerialiser<>)
+								.MakeGenericType(new[] { target }),
+							new[] { Activator.CreateInstance(t) }));
 				}
 			}
 		}
 		
 		public static void RegisterSpecialSerialiser<T>(ISpecialSerialiser<T> serialiser)
 		{
-			SpecialSerialisers.Add(typeof(T), serialiser);
+			SpecialSerialisers.Add(typeof(T), new UngenericSpecialSerialiser<T>(serialiser));
 		}
 		
 		private class GuidSerialiser: ISpecialSerialiser<Guid>
@@ -315,7 +323,7 @@ namespace Whoa
 			using (var read = new BinaryReader(fobj, Encoding.UTF8, true))
 			{
 				// Look for a special serialiser for this type.
-				dynamic special = null;
+				ISpecialSerialiser special = null;
 				if (SpecialSerialisers.TryGetValue(t, out special))
 				{
 					return special.DeserialiseObject(fobj);
@@ -331,10 +339,10 @@ namespace Whoa
 					int numelems = read.ReadInt32();
 					if (numelems == (int)SpecialSizes.Null)
 						return null;
-					dynamic reta = Activator.CreateInstance(t, new object[] { numelems });
-					Type elemtype = t.GetElementType();
+					var reta = (IList)Activator.CreateInstance(t, new object[] { numelems });
+					var elemtype = t.GetElementType();
 					for (int i = 0; i < numelems; i++)
-						reta[i] = (dynamic)DeserialiseObject(elemtype, fobj, options);
+						reta[i] = DeserialiseObject(elemtype, fobj, options);
 					return reta;
 				}
 				
@@ -353,10 +361,11 @@ namespace Whoa
 						int numelems = read.ReadInt32();
 						if (numelems == (int)SpecialSizes.Null)
 							return null;
-						dynamic retl = Activator.CreateInstance(t, new object[] { numelems });
+						object retl = Activator.CreateInstance(t, new object[] { numelems });
 						Type elemtype = t.GetGenericArguments()[0];
+						var AddMethod = t.GetMethod("Add");
 						for (int i = 0; i < numelems; i++)
-							retl.Add((dynamic)DeserialiseObject(elemtype, fobj, options));
+							AddMethod.Invoke(retl, new[] { DeserialiseObject(elemtype, fobj, options) });
 						return retl;
 					}
 					
@@ -365,13 +374,14 @@ namespace Whoa
 						int numpairs = read.ReadInt32();
 						if (numpairs == (int)SpecialSizes.Null)
 							return null;
-						dynamic retd = Activator.CreateInstance(t, new object[] { numpairs });
+						object retd = Activator.CreateInstance(t, new object[] { numpairs });
 						Type[] arguments = t.GetGenericArguments();
+						var AddMethod = t.GetMethod("Add");
 						for (int i = 0; i < numpairs; i++)
 						{
-							dynamic key = DeserialiseObject(arguments[0], fobj, options);
-							dynamic val = DeserialiseObject(arguments[1], fobj, options);
-							retd.Add(key, val);
+							object key = DeserialiseObject(arguments[0], fobj, options);
+							object val = DeserialiseObject(arguments[1], fobj, options);
+							AddMethod.Invoke(retd, new[] { key, val });
 						}
 						return retd;
 					}
@@ -385,31 +395,39 @@ namespace Whoa
 				if (nummembers == (int)SpecialSizes.Null)
 					return null;
 				object ret = t.GetConstructor(Type.EmptyTypes).Invoke(new object[] { });
-				var bools = new List<dynamic>();
+				var bools = new List<Action<object, object>>();
 				
-				foreach (dynamic member in Members(t, options).Take(nummembers))
+				foreach (var member in Members(t, options).Take(nummembers))
 				{
 					Type memt;
+					Action<object, object> setvalue;
+					
 					if (member.MemberType == MemberTypes.Field)
-						memt = member.FieldType;
+					{
+						memt = ((FieldInfo)member).FieldType;
+						setvalue = ((FieldInfo)member).SetValue;
+					}
 					else
-						memt = member.PropertyType;
+					{
+						memt = ((PropertyInfo)member).PropertyType;
+						setvalue = ((PropertyInfo)member).SetValue;
+					}
 					
 					if (memt == typeof(bool))
-						bools.Add(member);
+						bools.Add(setvalue);
 					else if (memt == typeof(List<bool>))
-						member.SetValue(ret, ReadBitfield(fobj, read.ReadInt32()));
+						setvalue(ret, ReadBitfield(fobj, read.ReadInt32()));
 					else if (memt == typeof(bool[]))
-						member.SetValue(ret, ReadBitfield(fobj, read.ReadInt32()).ToArray());
+						setvalue(ret, ReadBitfield(fobj, read.ReadInt32()).ToArray());
 					else
-						member.SetValue(ret, DeserialiseObject(memt, fobj, options));
+						setvalue(ret, DeserialiseObject(memt, fobj, options));
 				}
 				
 				if (bools.Count > 0)
 				{
 					var loaded = ReadBitfield(fobj, bools.Count);
-					foreach (var item in bools.Zip(loaded, (m, b) => new { Member = m, Value = b }))
-						item.Member.SetValue(ret, item.Value);
+					foreach (var item in bools.Zip(loaded, (m, b) => new { SetValue = m, Value = b }))
+						item.SetValue(ret, item.Value);
 				}
 				return ret;
 			}
@@ -423,7 +441,7 @@ namespace Whoa
 			SerialiseObject(t, fobj, obj, options);
 		}
 		
-		private static void SerialiseObjectWorker(Stream fobj, dynamic obj, Type t, SerialisationOptions options)
+		private static void SerialiseObjectWorker(Stream fobj, object obj, Type t, SerialisationOptions options)
 		{
 #if DEBUG
 			Console.WriteLine("Serialising object of type: " + t.ToString());
@@ -431,7 +449,7 @@ namespace Whoa
 			using (var write = new BinaryWriter(fobj, Encoding.UTF8, true))
 			{
 				// Look for a special serialiser for this type.
-				dynamic special = null;
+				ISpecialSerialiser special = null;
 				if (SpecialSerialisers.TryGetValue(t, out special))
 				{
 					special.SerialiseObject(fobj, obj);
@@ -451,8 +469,9 @@ namespace Whoa
 						write.Write((int)SpecialSizes.Null);
 						return;
 					}
-					write.Write(obj.Length);
-					foreach (dynamic item in obj)
+					IList l = (IList)obj;
+					write.Write(l.Count);
+					foreach (object item in l)
 						SerialiseObject(item.GetType(), fobj, item, options);
 					return;
 				}
@@ -477,8 +496,9 @@ namespace Whoa
 							write.Write((int)SpecialSizes.Null);
 							return;
 						}
-						write.Write(obj.Count);
-						foreach (dynamic item in obj)
+						IList l = (IList)obj;
+						write.Write(l.Count);
+						foreach (object item in l)
 							SerialiseObject(item.GetType(), fobj, item, options);
 						return;
 					}
@@ -490,11 +510,14 @@ namespace Whoa
 							write.Write((int)SpecialSizes.Null);
 							return;
 						}
-						write.Write(obj.Count);
-						foreach (dynamic pair in obj)
+						IDictionary d = (IDictionary)obj;
+						write.Write(d.Count);
+						var args = t.GetGenericArguments();
+						
+						foreach (DictionaryEntry pair in d)
 						{
-							SerialiseObject(pair.Key.GetType(), fobj, pair.Key, options);
-							SerialiseObject(pair.Value.GetType(), fobj, pair.Value, options);
+							SerialiseObject(args[0], fobj, pair.Key, options);
+							SerialiseObject(args[1], fobj, pair.Value, options);
 						}
 						return;
 					}
@@ -502,7 +525,7 @@ namespace Whoa
 				
 				try
 				{
-					write.Write(obj); // Will fail if not a primitive type
+					write.Write((dynamic)obj); // Will fail if not a primitive type
 					return;
 				}
 				catch
@@ -522,19 +545,29 @@ namespace Whoa
 				var members = Members(t, options);
 				write.Write(members.Count());
 				
-				foreach (dynamic member in members)
+				foreach (MemberInfo member in members)
 				{
 					Type memt;
+					Func<object, object> getvalue;
+					
 					if (member.MemberType == MemberTypes.Field)
-						memt = member.FieldType;
+					{
+						memt = ((FieldInfo)member).FieldType;
+						getvalue = ((FieldInfo)member).GetValue;
+					}
 					else
-						memt = member.PropertyType;
+					{
+						memt = ((PropertyInfo)member).PropertyType;
+						getvalue = ((PropertyInfo)member).GetValue;
+					}
+					
+					
 					
 					if (memt == typeof(bool))
-						bools.Add(member.GetValue(obj));
+						bools.Add((bool)getvalue(obj));
 					else if (memt == typeof(List<bool>) || memt == typeof(bool[]))
 					{
-						var val = member.GetValue(obj) as IEnumerable<bool>;
+						var val = getvalue(obj) as IEnumerable<bool>;
 						if (val == null)
 							write.Write((int)SpecialSizes.Null);
 						else
@@ -545,7 +578,7 @@ namespace Whoa
 					}
 					else
 					{
-						dynamic val = member.GetValue(obj);
+						object val = getvalue(obj);
 						SerialiseObject(memt, fobj, val, options);
 					}
 					
@@ -555,7 +588,7 @@ namespace Whoa
 			}
 		}
 		
-		public static void SerialiseObject(Type t, Stream fobj, dynamic obj, SerialisationOptions options = SerialisationOptions.None)
+		public static void SerialiseObject(Type t, Stream fobj, object obj, SerialisationOptions options = SerialisationOptions.None)
 		{
 			try
 			{
@@ -576,7 +609,7 @@ namespace Whoa
 		}
 		
 		[Obsolete("This argument order is weird.")]
-		public static void SerialiseObject(Stream fobj, dynamic obj, Type t)
+		public static void SerialiseObject(Stream fobj, object obj, Type t)
 		{
 			SerialiseObject(t, fobj, obj);
 		}
